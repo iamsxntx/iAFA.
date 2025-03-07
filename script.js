@@ -1,141 +1,159 @@
-#include <WiFi.h>
-#include <HTTPClient.h>
+const requisitosCultivos = {
+     mora: { luminosidad: "6-8 horas", humedad_ambiente: "60-70%", humedad_suelo: "50-60%", temperatura: "15-25°C" },
+    lulo: { luminosidad: "8-10 horas", humedad_ambiente: "70-80%", humedad_suelo: "60-70%", temperatura: "15-20°C" },
+    frijol: { luminosidad: "6-8 horas", humedad_ambiente: "50-60%", humedad_suelo: "40-50%", temperatura: "20-30°C" },
+    cafe: { luminosidad: "5-7 horas", humedad_ambiente: "70-80%", humedad_suelo: "60-70%", temperatura: "18-24°C" },
+    maiz: { luminosidad: "10-12 horas", humedad_ambiente: "55-75%", humedad_suelo: "50-60%", temperatura: "20-30°C" },
+    arveja: { luminosidad: "6-8 horas", humedad_ambiente: "50-70%", humedad_suelo: "40-50%", temperatura: "15-20°C" },
+    yuca: { luminosidad: "8-10 horas", humedad_ambiente: "60-70%", humedad_suelo: "50-60%", temperatura: "25-30°C" },
+    auyama: { luminosidad: "6-8 horas", humedad_ambiente: "60-70%", humedad_suelo: "50-60%", temperatura: "20-25°C" },
+    papa: { luminosidad: "8-10 horas", humedad_ambiente: "70-80%", humedad_suelo: "60-70%", temperatura: "15-20°C" },
+    cebolla: { luminosidad: "10-12 horas", humedad_ambiente: "60-70%", humedad_suelo: "50-60%", temperatura: "15-20°C" },
+    tomate: { luminosidad: "8-10 horas", humedad_ambiente: "60-70%", humedad_suelo: "50-60%", temperatura: "20-25°C" },
+    naranjas: { luminosidad: "8-10 horas", humedad_ambiente: "50-60%", humedad_suelo: "40-50%", temperatura: "25-30°C" },
+};
 
-#define LED_VERDE 25
-#define LED_AMARILLO 26
-#define LED_ROJO 27
-#define BUZZER 33
-#define SENSOR_HUMEDAD_SUELO 34
+let chart;
 
-const char* ssid = "dlink_DWR-932C_7589";
-const char* password = "tPYzK57338";
+async function obtenerDatos() {
+    try {
+        console.log("Intentando obtener datos del servidor...");
+        let response = await fetch("https://iafa-nwz4.onrender.com/datos");
 
-float lastTemp = 20.0;  // Valor fijo para temperatura
-float lastHumedad = 75.0;  // Valor fijo para humedad ambiente
-uint16_t lastLuz = 1000;  // Valor fijo para luz
-int lastHumSuelo = 50;  // Valor fijo para humedad de suelo
+        if (!response.ok) {
+            throw new Error(Error en la respuesta del servidor: ${response.status});
+        }
 
-unsigned long lastRead = 0;
-const int intervaloLectura = 2000;
+        let datos = await response.json();
+        console.log("Datos obtenidos:", datos);
 
-unsigned long buzzerStart = 0;
-bool buzzerActivo = false;
+        console.log("Temperatura obtenida:", datos.temperatura);
 
-void setup() {
-  Serial.begin(115200);
-  Serial.println("Iniciando ESP32...");
+        document.getElementById("temp").innerText = datos.temperatura + "°C";
+        document.getElementById("humedad_ambiente").innerText = datos.humedad_ambiente + "%";
+        document.getElementById("humedad_suelo").innerText = datos.humedad_suelo + "%";
+        document.getElementById("luz").innerText = datos.luz;
 
-  pinMode(LED_VERDE, OUTPUT);
-  pinMode(LED_AMARILLO, OUTPUT);
-  pinMode(LED_ROJO, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
+        actualizarGrafico(datos);
 
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando a WiFi");
-  int intentos = 0;
-  while (WiFi.status() != WL_CONNECTED && intentos < 20) {
-    delay(1000);
-    Serial.print(".");
-    intentos++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConectado a WiFi");
-    Serial.print("Direccion IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\nNo se pudo conectar a WiFi");
-  }
+    } catch (error) {
+        console.error("Error al obtener datos del servidor:", error);
+    }
 }
 
-void loop() {
-  reconectarWiFi();
-  manejarBuzzer();
-
-  if (millis() - lastRead >= intervaloLectura) {
-    lastRead = millis();
-    enviarDatosHTTP(lastTemp, lastHumedad, lastLuz, lastHumSuelo);
-    actualizar_LEDs();
-    imprimirDatos();
-  }
+function actualizarGrafico(datos) {
+    if (chart) {
+        chart.data.datasets[1].data = [datos.luz, datos.humedad_ambiente, datos.humedad_suelo , datos.temperatura];
+        chart.update();
+    }
 }
 
-void reconectarWiFi() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Reconectando a WiFi...");
-    WiFi.disconnect();
-    WiFi.reconnect();
-  }
+document.getElementById("actualizar").addEventListener("click", obtenerDatos);
+
+function analizarCultivo() {
+    const cultivo = document.getElementById("cultivo").value;
+    const resultadosDiv = document.getElementById("resultados");
+
+    const requisitos = requisitosCultivos[cultivo];
+
+    resultadosDiv.innerHTML = `
+        <h3>Requisitos para cultivar ${cultivo.charAt(0).toUpperCase() + cultivo.slice(1)}:</h3>
+        <ul>
+            <li><strong>Luminosidad:</strong> ${requisitos.luminosidad}</li>
+            <li><strong>Humedad Ambiente:</strong> ${requisitos.humedad_ambiente}</li>
+            <li><strong>Humedad Suelo:</strong> ${requisitos.humedad_suelo}</li>
+            <li><strong>Temperatura:</strong> ${requisitos.temperatura}</li>
+        </ul>
+        <p>¡Verifica si las condiciones de tu suelo son adecuadas!</p>
+    `;
+
+    mostrarGrafico(requisitos);
 }
 
-void imprimirDatos() {
-  Serial.print("Temperatura: "); Serial.print(lastTemp); Serial.println(" °C");
-  Serial.print("Humedad: "); Serial.print(lastHumedad); Serial.println(" %");
-  Serial.print("Luz: "); Serial.print(lastLuz); Serial.println(" Lux");
-  Serial.print("Humedad Suelo: "); Serial.print(lastHumSuelo); Serial.println(" %");
+async function render() {
+    try {
+        console.log('Intentando obtener datos del servidor...');
+        const response = await fetch('https://iafa-h9tv.onrender.com/datos');
+        console.log('Respuesta del servidor:', response);
+
+        if (!response.ok) {
+            throw new Error('Error en la respuesta del servidor');
+        }
+        
+        const data = await response.json();
+        console.log('Datos obtenidos:', data);
+
+        return {
+            luminosidad: data.luz,
+            humedad: data.humedad_ambiente,
+            humedad: data.humedad_suelo,
+            temperatura: data.temperatura
+        };
+    } catch (error) {
+        console.error('Error al obtener datos del render:', error);
+        return {
+            luminosidad: 0,
+            humedad_ambiente: 0,
+            humedad_suelo: 0,
+            temperatura: 0
+        };
+    }
 }
 
-void actualizar_LEDs() {
-  int condiciones_ok = 0;
-  if (lastTemp >= 5 && lastTemp <= 25) condiciones_ok++;
-  if (lastHumedad >= 70 && lastHumedad < 90) condiciones_ok++;
-  if (lastLuz >= 1000 && lastLuz < 50000) condiciones_ok++;
-  if (lastHumSuelo >= 30 && lastHumSuelo <= 70) condiciones_ok++;
+async function mostrarGrafico(requisitos) {
+    const container = document.getElementById("graficoContainer");
 
-  digitalWrite(LED_VERDE, LOW);
-  digitalWrite(LED_AMARILLO, LOW);
-  digitalWrite(LED_ROJO, LOW);
-  noTone(BUZZER);
+    const data = await render();
 
-  if (condiciones_ok == 4) {
-    Serial.println("Condiciones ideales: LED Verde ENCENDIDO");
-    digitalWrite(LED_VERDE, HIGH);
-  } else if (condiciones_ok == 3) {
-    Serial.println("Condiciones moderadas: LED Amarillo ENCENDIDO");
-    digitalWrite(LED_AMARILLO, HIGH);
-  } else {
-    Serial.println("Condiciones críticas: LED Rojo ENCENDIDO + Buzzer ACTIVADO");
-    digitalWrite(LED_ROJO, HIGH);
-    activarBuzzer(500);
-  }
-}
-
-void activarBuzzer(int tiempo) {
-  tone(BUZZER, 1000);
-  buzzerStart = millis();
-  buzzerActivo = true;
-}
-
-void manejarBuzzer() {
-  if (buzzerActivo && millis() - buzzerStart >= 500) {
-    noTone(BUZZER);
-    buzzerActivo = false;
-  }
-}
-
-void enviarDatosHTTP(float temperatura, float humedad, uint16_t luz, int humedadSuelo) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    String url = "https://iafa-nwz4.onrender.com/datos";
-    http.begin(url);
-    http.addHeader("Content-Type", "application/json");
-
-    String json = "{";
-    json += "\"temperatura\":" + String(temperatura, 2) + ",";
-    json += "\"humedad\":" + String(humedad, 2) + ",";
-    json += "\"luz\":" + String(luz) + ",";
-    json += "\"humedad_suelo\":" + String(humedadSuelo);
-    json += "}";
-
-    int httpResponseCode = http.POST(json);
-    if (httpResponseCode > 0) {
-      Serial.println("Datos enviados correctamente");
-    } else {
-      Serial.printf("Error al enviar datos: %d\n", httpResponseCode);
+    if (chart) {
+        chart.destroy();
     }
 
-    http.end();
-  } else {
-    Serial.println("WiFi desconectado");
-  }
+    const ctx = document.createElement("canvas");
+    container.innerHTML = '';
+    container.appendChild(ctx);
+
+    chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Luminosidad', 'Humedad Ambiente', 'Humedad de Suelo', 'Temperatura'],
+            datasets: [
+                {
+                    label: 'Requisitos del Cultivo',
+                    data: [
+                        parseFloat(requisitos.luminosidad), 
+                        parseInt(requisitos.humedad_ambiente),
+                        parseInt(requisitos.humedad_suelo),
+                        parseInt(requisitos.temperatura)
+                    ],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Condiciones Actuales',
+                    data: [
+                        parseFloat(data.luminosidad), 
+                         parseInt(data.humedad_ambiente),
+                        parseInt(data.humedad_suelo),
+                        parseInt(data.temperatura)
+                    ],
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
 }
+
+setInterval(obtenerDatos, 3000);
+
+obtenerDatos();
